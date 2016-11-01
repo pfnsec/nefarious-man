@@ -50,7 +50,7 @@ function loginCallback(err, api)
     api.setOptions({logLevel: "warning"});
     api.setOptions({selfListen: false});
     api.setOptions({listenEvents: true});
-    api.setOptions({updatePresence: true});
+ //   api.setOptions({updatePresence: true});
     api.setOptions({forceLogin: true});
     
     api.listen((err, event) => { listenCallback(err, event, api); });
@@ -67,7 +67,8 @@ function listenCallback(err, event, api)
 //        }
         
     } else if (event.type == "presence") {
-        console.log(event.userID + event.statuses.status);
+        console.log(event.userID + " " + event.status);
+
         if(event.statuses.status == "active"){
             online_status.set(event.userID, true);
         } else {
@@ -79,10 +80,16 @@ function listenCallback(err, event, api)
 
 function parseCommand(api, event)
 {
+    try {
+
     let str = event.body.split(" ");
 
     if(str[0].charAt(0) == "%") {
         return dispatchCommand(api, event, str[0].slice(1), str.slice(1));
+    }
+
+    } catch(err) {
+        console.log(err.message);
     }
 }
 
@@ -90,10 +97,15 @@ function dispatchCommand(api, event, command, args)
 {
     console.log(command + "(" + args + ")");
     if(command == "wrlog") {
-        
     } else if(command == "quote") {
     } else if(command == "voteskip") {
         voteSkipHTV(api, event, event.senderID);
+    } else if(command == "nextshow") {
+        nextShowHTV(api, event, args[0]);
+    } else if(command == "currentepisode") {
+        currentEpisodeHTV(api, event);
+    } else if(command == "showlist") {
+        showListHTV(api, event);
     } else if(command == "chatstats") {
 //       chatHistorySize(api, event);
     }
@@ -102,7 +114,7 @@ function dispatchCommand(api, event, command, args)
 function countOnline() {
     var count = 0;
     for (id in online_status) {
-        if (!id.hasOwnProperty(online_status) || !online_status.get(id)) {
+        if (!online_status.hasOwnProperty(id) || !online_status.get(id)) {
                 continue;
         }
         
@@ -121,7 +133,7 @@ function voteSkipHTV(api, event, id) {
     var count = countOnline();
     var votes = skip_votes.size;
 
-    //Check to see if this user has already voted to skip. 
+    ///Check to see if this user has already voted to skip. 
     //If they have, just recount the votes (online status may have changed).
     if(skip_votes.has(id)) {
         sendReply(api, event, "Recounting...");
@@ -141,15 +153,45 @@ function voteSkipHTV(api, event, id) {
     }
 }
 
+function nextShowHTV(api, event, tvShow) {
+    sendHTVCommand(api, event, {"command":"nextShow", "tvShow":tvShow});
+}
+
+function showListHTV(api, event) {
+    sendHTVCommand(api, event, {"command":"idList"});
+}
+
+function currentEpisodeHTV(api, event) {
+    sendHTVCommand(api, event, {"command":"currentEpisode"});
+}
+
 function sendHTVCommand(api, event, command) {
-    try {
- //   htv_sock.connect(account.htv_sock, account.htv_url, function() {
-   //     console.log(JSON.stringify(command));
-     //   htv_sock.write(JSON.stringify(command));
-  //  });
-    } catch (err) {
-    sendReply(api, event, "Couldn't send HTV command: " + err.message);
-    }
+//    try {
+
+    htv_sock = net.connect(5005, account.htv_url, function() {
+        console.log(JSON.stringify(command));
+        htv_sock.write(JSON.stringify(command));
+    }).on("data", function(data) {
+        console.log(data.toString('ascii'));
+        sendReply(api, event, data.toString('ascii'));
+        htv_sock.end();
+        htv_sock.destroy();
+    }).on("error", function(error) {
+        console.log(error);
+        sendReply(api, event, "Couldn't send HTV command: " + error.message);
+        htv_sock.end();
+        htv_sock.destroy();
+    }).on("close", function() {
+        htv_sock.end();
+        htv_sock.destroy();
+    }).on("end", function() {
+        htv_sock.end();
+        htv_sock.destroy();
+    });
+
+
+//    } catch (error) {
+//    sendReply(api, event, "Couldn't send HTV command: " + err.message);
 }
 
 function quoteMessage(api, event, message) 
