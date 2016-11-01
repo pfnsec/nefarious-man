@@ -106,6 +106,8 @@ function dispatchCommand(api, event, command, args)
         currentEpisodeHTV(api, event);
     } else if(command == "showlist") {
         showListHTV(api, event);
+    } else if(command == "requestshow") {
+        requestShowHTV(api, event, args.join(" "));
     } else if(command == "chatstats") {
 //       chatHistorySize(api, event);
     }
@@ -163,6 +165,10 @@ function showListHTV(api, event) {
 
 function currentEpisodeHTV(api, event) {
     sendHTVCommand(api, event, {"command":"currentEpisode"});
+}
+
+function requestShowHTV(api, event, tvShow) {
+    sendHTVCommand(api, event, {"command":"request", "tvShow":tvShow});
 }
 
 function sendHTVCommand(api, event, command) {
