@@ -47,10 +47,10 @@ function loginCallback(err, api)
     if (err)
         return console.error(err);
 
-    api.setOptions({logLevel: "warning"});
+    api.setOptions({logLevel: "error"});
     api.setOptions({selfListen: false});
     api.setOptions({listenEvents: true});
- //   api.setOptions({updatePresence: true});
+//  api.setOptions({updatePresence: true});
     api.setOptions({forceLogin: true});
     
     api.listen((err, event) => { listenCallback(err, event, api); });
@@ -67,7 +67,7 @@ function listenCallback(err, event, api)
 //        }
         
     } else if (event.type == "presence") {
-        console.log(event.userID + " " + event.status);
+        console.log(event.userID + " " + event.statuses);
 
         if(event.statuses.status == "active"){
             online_status.set(event.userID, true);
@@ -98,6 +98,7 @@ function dispatchCommand(api, event, command, args)
     console.log(command + "(" + args + ")");
     if(command == "wrlog") {
     } else if(command == "quote") {
+//        sendReply(event, api, quotelist[Math.floor(Math.random() * quotelist.length)]);
     } else if(command == "voteskip") {
         voteSkipHTV(api, event, event.senderID);
     } else if(command == "nextshow") {
@@ -127,6 +128,20 @@ function countOnline() {
     return count;
 }
 
+function noReply(data) {
+    return "";
+}
+
+//let quotelist = JSON.parse(fs.readFileSync('quotes.json', {encoding:'utf8', flag:'a+'}));
+
+function okReply(data) {
+    if(data === "True") {
+//        return quotelist[Math.floor(Math.random() * quotelist.length)];
+    }
+
+    return data;
+}
+
 function voteSkipHTV(api, event, id) {
     //If they voted, they must be online.
     if(!online_status.has(id) || !online_status.get(id))
@@ -139,19 +154,15 @@ function voteSkipHTV(api, event, id) {
     //If they have, just recount the votes (online status may have changed).
     if(skip_votes.has(id)) {
         sendReply(api, event, "Recounting...");
-        if(votes >= Math.floor(count/2)) {
-                sendHTVCommand(api, event, {"command":"skip"});
-                skip_votes = new Map();
-        }
     } else {
         skip_votes.set(id, true);
         votes = skip_votes.size;
         sendReply(api, event, "Voted to skip! (" + votes + "/" + count + ")");
-        
-        if(votes >= Math.floor(count/2)) {
-                sendHTVCommand(api, event, {"command":"skip"});
-                skip_votes = new Map();
-        }
+    }
+
+    if(votes >= Math.floor(count/2)) {
+        sendHTVCommand(api, event, {"command":"skip"}, noReply);
+        skip_votes = new Map();
     }
 }
 
@@ -160,7 +171,16 @@ function nextShowHTV(api, event, tvShow) {
 }
 
 function showListHTV(api, event) {
-    sendHTVCommand(api, event, {"command":"idList"});
+    var showList = [];
+    sendHTVCommand(api, event, {"command":"idList"}, function(data) {
+        for (name in data) {
+            if (!data.hasOwnProperty(name)) {
+                continue;
+            }
+            showList.push(name);
+        }
+        return showList.join(", ");
+    });
 }
 
 function currentEpisodeHTV(api, event) {
@@ -171,15 +191,13 @@ function requestShowHTV(api, event, tvShow) {
     sendHTVCommand(api, event, {"command":"request", "tvShow":tvShow});
 }
 
-function sendHTVCommand(api, event, command) {
-//    try {
-
+function sendHTVCommand(api, event, command, parseReply) {
     htv_sock = net.connect(5005, account.htv_url, function() {
         console.log(JSON.stringify(command));
         htv_sock.write(JSON.stringify(command));
     }).on("data", function(data) {
         console.log(data.toString('ascii'));
-        sendReply(api, event, data.toString('ascii'));
+        sendReply(api, event, parseReply(data));
         htv_sock.end();
         htv_sock.destroy();
     }).on("error", function(error) {
@@ -194,10 +212,6 @@ function sendHTVCommand(api, event, command) {
         htv_sock.end();
         htv_sock.destroy();
     });
-
-
-//    } catch (error) {
-//    sendReply(api, event, "Couldn't send HTV command: " + err.message);
 }
 
 function quoteMessage(api, event, message) 
@@ -209,7 +223,8 @@ function quoteMessage(api, event, message)
 function sendReply(api, event, message) 
 {
     let msg = {body: message};
-    api.sendMessage(msg, event.threadID);
+    if(message != "")
+        api.sendMessage(msg, event.threadID);
 }
 
 function chatHistorySize(api, event) 
