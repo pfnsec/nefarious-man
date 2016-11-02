@@ -167,28 +167,27 @@ function voteSkipHTV(api, event, id) {
 }
 
 function nextShowHTV(api, event, tvShow) {
-    sendHTVCommand(api, event, {"command":"nextShow", "tvShow":tvShow});
+    sendHTVCommand(api, event, {"command":"nextShow", "tvShow":tvShow}, okReply);
 }
 
 function showListHTV(api, event) {
     var showList = [];
     sendHTVCommand(api, event, {"command":"idList"}, function(data) {
-        for (name in data) {
-            if (!data.hasOwnProperty(name)) {
-                continue;
-            }
-            showList.push(name);
-        }
+        JSON.parse(data.toString('utf8'), (key, value) => {
+            if(key != "name" && key != "path")
+                showList.push(key);
+        });
+
         return showList.join(", ");
     });
 }
 
 function currentEpisodeHTV(api, event) {
-    sendHTVCommand(api, event, {"command":"currentEpisode"});
+    sendHTVCommand(api, event, {"command":"currentEpisode"}, okReply);
 }
 
 function requestShowHTV(api, event, tvShow) {
-    sendHTVCommand(api, event, {"command":"request", "tvShow":tvShow});
+    sendHTVCommand(api, event, {"command":"request", "tvShow":tvShow}, okReply);
 }
 
 function sendHTVCommand(api, event, command, parseReply) {
@@ -196,10 +195,8 @@ function sendHTVCommand(api, event, command, parseReply) {
         console.log(JSON.stringify(command));
         htv_sock.write(JSON.stringify(command));
     }).on("data", function(data) {
-        console.log(data.toString('ascii'));
+        console.log("Data : " + data.toString('ascii')  + " \n");
         sendReply(api, event, parseReply(data));
-        htv_sock.end();
-        htv_sock.destroy();
     }).on("error", function(error) {
         console.log(error);
         sendReply(api, event, "Couldn't send HTV command: " + error.message);
