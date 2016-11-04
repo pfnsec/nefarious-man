@@ -18,7 +18,9 @@ let nicknames = new Map
 ]);
 
 
-let superuser = 1384616951;
+let superuser = "1384616951";
+
+let sudoers = ["532092405"];
 
 function defaultError(err)
 {
@@ -39,6 +41,7 @@ login({email: account.email, password: account.password}, loginCallback);
 
 var htv_sock = net.Socket();
 var skip_votes = new Map();
+var votelock = false;
 var online_status = new Map();
 
 
@@ -50,7 +53,7 @@ function loginCallback(err, api)
     api.setOptions({logLevel: "error"});
     api.setOptions({selfListen: false});
     api.setOptions({listenEvents: true});
-//  api.setOptions({updatePresence: true});
+//    api.setOptions({updatePresence: true});
     api.setOptions({forceLogin: true});
     
     api.listen((err, event) => { listenCallback(err, event, api); });
@@ -62,17 +65,14 @@ function listenCallback(err, event, api)
         return console.error(err);
 
     if (event.type == "message") {
-//        if(event.senderID == superuser) {
-            parseCommand(api, event);
-//        }
-        
+        parseCommand(api, event);
     } else if (event.type == "presence") {
-        console.log(event.userID + " " + event.statuses);
+        console.log(event.userID + " " + event.status);
 
         if(event.statuses.status == "active"){
-            online_status.set(event.userID, true);
+            online_status.set(event.senderID, true);
         } else {
-            online_status.set(event.userID, false);
+            online_status.set(event.senderID, false);
         }
     } else {
     }
@@ -99,6 +99,10 @@ function dispatchCommand(api, event, command, args)
     if(command == "wrlog") {
     } else if(command == "quote") {
 //        sendReply(event, api, quotelist[Math.floor(Math.random() * quotelist.length)]);
+    } else if(command == "lock" && testGroup(api, event, sudoers)) {
+        votelock = true;
+    } else if(command == "unlock" && testGroup(api, event, sudoers)) {
+        votelock = false;
     } else if(command == "voteskip") {
         voteSkipHTV(api, event, event.senderID);
     } else if(command == "nextshow") {
@@ -116,20 +120,30 @@ function dispatchCommand(api, event, command, args)
 
 function countOnline() {
     var count = 0;
+    online_status.forEach((key, value) => {
+        if(value === true)
+            count++;
+    });
+/*
     for (id in online_status) {
         if (!online_status.hasOwnProperty(id) || !online_status.get(id)) {
                 continue;
         }
         
         count = count + 1;
-    }
+    }*/
 
     console.log(count + " people are currently online.");
     return count;
 }
 
 function noReply(data) {
-    return "";
+    if(data === "True") {
+//        return quotelist[Math.floor(Math.random() * quotelist.length)];
+        return "";
+    }
+
+    return data;
 }
 
 //let quotelist = JSON.parse(fs.readFileSync('quotes.json', {encoding:'utf8', flag:'a+'}));
@@ -143,6 +157,10 @@ function okReply(data) {
 }
 
 function voteSkipHTV(api, event, id) {
+    if(votelock) {
+        sendReply(api, event, "Locked!");
+        return;
+    }
     //If they voted, they must be online.
     if(!online_status.has(id) || !online_status.get(id))
         online_status.set(id, true);
@@ -182,6 +200,17 @@ function showListHTV(api, event) {
     });
 }
 
+function testGroup(api, event, group) {
+    if(event.senderID === superuser || group.includes(event.senderID)) {
+        return true;
+    } else {
+        console.log(nicknames);
+        console.log(event.UserID);
+        sendReply(api, event, nicknames.get(event.senderID) + " is not in the sudoers file. This incident will be reported.");
+        return false;
+    }
+}
+
 function currentEpisodeHTV(api, event) {
     sendHTVCommand(api, event, {"command":"currentEpisode"}, okReply);
 }
@@ -197,6 +226,8 @@ function sendHTVCommand(api, event, command, parseReply) {
     }).on("data", function(data) {
         console.log("Data : " + data.toString('ascii')  + " \n");
         sendReply(api, event, parseReply(data));
+        htv_sock.end();
+        htv_sock.destroy();
     }).on("error", function(error) {
         console.log(error);
         sendReply(api, event, "Couldn't send HTV command: " + error.message);
