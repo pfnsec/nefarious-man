@@ -6,6 +6,7 @@ let login = require("facebook-chat-api");
 let fs = require('fs');
 let request = require('request');
 let net = require('net');
+let emoji = require('random-emoji');
 
 let nicknames = new Map
 ([
@@ -82,10 +83,17 @@ function parseCommand(api, event)
 {
     try {
 
-    let str = event.body.split(" ");
+    let cmds = event.body.split(";");
 
-    if(str[0].charAt(0) == "%") {
-        return dispatchCommand(api, event, str[0].slice(1), str.slice(1));
+    console.log(cmds.length);
+
+    for(var i = 0; i < cmds.length; i++) {
+            var str = cmds[i].trim().split(" ");
+            console.log(str);
+
+            if(str[0].trim().charAt(0) == "%") {
+                dispatchCommand(api, event, str[0].slice(1), str.slice(1));
+            }
     }
 
     } catch(err) {
@@ -103,15 +111,18 @@ function dispatchCommand(api, event, command, args)
         votelock = true;
     } else if(command == "unlock" && testGroup(api, event, sudoers)) {
         votelock = false;
-    } else if(command == "voteskip") {
+    } else if(command == "spin") {
+        console.log(emoji.random({count: 1})[0].name);
+        api.changeThreadEmoji(emoji.random({count: 1})[0].character, event.threadID, defaultError);
+    } else if(command == "voteskip" || command == "vs") {
         voteSkipHTV(api, event, event.senderID);
-    } else if(command == "nextshow") {
+    } else if(command == "nextshow" || command == "ns") {
         nextShowHTV(api, event, args[0]);
-    } else if(command == "currentepisode") {
+    } else if(command == "currentepisode" || command == "ce") {
         currentEpisodeHTV(api, event);
-    } else if(command == "showlist") {
+    } else if(command == "showlist" || command == "sl") {
         showListHTV(api, event);
-    } else if(command == "requestshow") {
+    } else if(command == "requestshow"|| command == "sl") {
         requestShowHTV(api, event, args.join(" "));
     } else if(command == "chatstats") {
 //       chatHistorySize(api, event);
@@ -175,7 +186,7 @@ function voteSkipHTV(api, event, id) {
     } else {
         skip_votes.set(id, true);
         votes = skip_votes.size;
-        sendReply(api, event, "Voted to skip! (" + votes + "/" + count + ")");
+//        sendReply(api, event, "Voted to skip! (" + votes + "/" + count + ")");
     }
 
     if(votes >= Math.floor(count/2)) {
