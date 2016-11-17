@@ -18,6 +18,16 @@ let nicknames = new Map
     ["1187113581",  "Wesley"],
 ]);
 
+let ids = new Map
+([
+    ["David",   "532092405"],
+    ["Patrick", "722210172"],
+    ["Kassian", "1677897853"],
+    ["Pete",    "1384616951"],
+    ["Tom",     "1337032824"],
+    ["Wesley",  "1187113581"],
+]);
+
 
 let superuser = "1384616951";
 
@@ -88,6 +98,9 @@ function parseCommand(api, event)
     console.log(cmds.length);
 
     for(var i = 0; i < cmds.length; i++) {
+            if(i > 10)
+                return;
+
             var str = cmds[i].trim().split(" ");
             console.log(str);
 
