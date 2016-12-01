@@ -75,6 +75,8 @@ function listenCallback(err, event, api)
     if (err)
         return console.error(err);
 
+    console.log(event.type);
+
     if (event.type == "message") {
         parseCommand(api, event);
     } else if (event.type == "presence") {
@@ -244,26 +246,37 @@ function requestShowHTV(api, event, tvShow) {
 }
 
 function sendHTVCommand(api, event, command, parseReply) {
+    var resp = "";
+    var done = false;
     htv_sock = net.connect(5005, account.htv_url, function() {
         console.log(JSON.stringify(command));
         htv_sock.write(JSON.stringify(command));
     }).on("data", function(data) {
-        console.log("Data : " + data.toString('ascii')  + " \n");
-        sendReply(api, event, parseReply(data));
-        htv_sock.end();
-        htv_sock.destroy();
+        console.log("Data : " + data.toString('ascii')  + ", " + data.length + " \n");
+        resp += data;
+        if(resp.length % 1400) {
+            sendReply(api, event, parseReply(resp));
+            htv_sock.end();
+            htv_sock.destroy();
+            done = true;
+        }
     }).on("error", function(error) {
         console.log(error);
         sendReply(api, event, "Couldn't send HTV command: " + error.message);
         htv_sock.end();
         htv_sock.destroy();
+        done = true;
     }).on("close", function() {
         htv_sock.end();
         htv_sock.destroy();
+        done = true;
     }).on("end", function() {
         htv_sock.end();
         htv_sock.destroy();
+        done = true;
     });
+
+     
 }
 
 function quoteMessage(api, event, message) 
