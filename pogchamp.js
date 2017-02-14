@@ -1,14 +1,19 @@
-/* vim: set tabstop=4 expandtab : */
+/* vim: set shiftwidth=4 tabstop=4 expandtab : */
 
 'use strict';
 
 let login = require("facebook-chat-api");
 let fs = require('fs');
+let youtube = require('youtube-node');
 let request = require('request');
 let https = require('https');
 let net = require('net');
 let emoji = require('random-emoji');
 let frinkiac = require('frinkiac');
+
+let yt = new youtube();
+
+yt.setKey('AIzaSyBqDoSJstUftFYevR9gR_34bAFMaI6YUUI');
 
 let nicknames = new Map
 ([
@@ -164,6 +169,18 @@ function dispatchCommand(api, event, command, args)
         showListHTV(api, event);
     } else if(command == "requestshow"|| command == "rs") {
         requestShowHTV(api, event, args.join(" "));
+    } else if(command == "yt") {
+        yt.search(args.join(" "), 1, function(err, res) {
+            if(err) {
+                sendReply(err.message);
+                console.log(err.message);
+            } else if(res.items[0] && res.items[0].id && res.items[0].id.videoId) {
+                let message = "https://www.youtube.com/watch?v=" + res.items[0].id.videoId;
+                api.sendMessage({body: message, url: message}, event.threadID, defaultError2);
+            } else {
+                sendReply("Nuh-uuuh");
+            }
+        });
     } else if(command == "man") {
          sendReply(api, event, 
             ["[requestshow|rs] showname: Request a show",
