@@ -30,6 +30,7 @@ let ids = new Map
     ["Wesley",  "1187113581"],
 ]);
 
+let commandHistory = new Map();
 
 let superuser = "1384616951";
 
@@ -105,7 +106,10 @@ function parseCommand(api, event)
 
     var gotCmd = false;
 
-    let cmds = event.body.split(";");
+    if(event.body == "`")
+        var cmds = commandHistory[event.senderID];
+    else
+        var cmds = event.body.split(";");
 
     console.log(cmds.length);
 
@@ -119,6 +123,7 @@ function parseCommand(api, event)
             if(str[0].trim().charAt(0) == "%") {
                 dispatchCommand(api, event, str[0].slice(1), str.slice(1));
                 gotCmd = true;
+                commandHistory[event.senderID] = cmds;
             }
     }
 
@@ -132,8 +137,6 @@ function dispatchCommand(api, event, command, args)
 {
     console.log(command + "(" + args + ")");
     if(command == "wrlog") {
-    } else if(command == "quote" && args == "") {
-        sendReply(event, api, quotelist[Math.floor(Math.random() * quotelist.length)]);
     } else if(command == "lock" && testGroup(api, event, sudoers)) {
         votelock = true;
     } else if(command == "unlock" && testGroup(api, event, sudoers)) {
@@ -148,7 +151,9 @@ function dispatchCommand(api, event, command, args)
         console.log(emoji.random({count: 1})[0].name);
         api.changeThreadEmoji(emoji.random({count: 1})[0].character, event.threadID, defaultError);
     } else if(command == "voteskip" || command == "vs") {
-        voteSkipHTV(api, event, event.senderID);
+        voteSkipHTV(api, event, event.senderID, false);
+    } else if(command == "vsc") {
+        voteSkipHTV(api, event, event.senderID, true);
     } else if(command == "nextshow" || command == "ns") {
         nextShowHTV(api, event, args[0]);
     } else if(command == "pickepisode" || command == "pe") {
@@ -211,11 +216,20 @@ function okReply(data) {
     return data;
 }
 
-function voteSkipHTV(api, event, id) {
+
+function voteSkipHTV(api, event, id, verbose) {
     if(votelock) {
         sendReply(api, event, "Locked!");
         return;
     }
+
+    if(verbose)
+            sendHTVCommand(api, event, {"command":"skip"}, noReply);
+    else 
+            sendHTVCommand(api, event, {"command":"skip"}, function(data) {return "";});
+
+
+    /*
     //If they voted, they must be online.
     if(!online_status.has(id) || !online_status.get(id))
         online_status.set(id, true);
@@ -237,6 +251,7 @@ function voteSkipHTV(api, event, id) {
         sendHTVCommand(api, event, {"command":"skip"}, noReply);
         skip_votes = new Map();
     }
+    */
 }
 
 function nextShowHTV(api, event, tvShow) {
@@ -334,6 +349,11 @@ function frinkOut(api, event, message, playEpisode){
             var memeURL = "";
         //    var memeURL = memes[Math.floor(Math.random() * memes.length)];
             console.log("Retrieved " + memes.length + "memes.");
+
+            if(memes.length == 0) {
+                sendReply(api, event, "D'oh!");
+            }
+
             var n = 0;
             while(memeURL == "") {
                 if(Math.random() < 0.60) {
@@ -361,7 +381,7 @@ function frinkOut(api, event, message, playEpisode){
                         captionParse = JSON.parse(captionData);
                         captionText = captionParse.Subtitles.map(function(s){return s.Content;}).join("\n");
                         if(playEpisode) {
-                            nextShowHTV(api, event, "simpsons:" + captionParse.Episode.Season.lstrip('0') + ":" + captionParse.Episode.EpisodeNumber.lstrip(0));
+                            nextShowHTV(api, event, "simpsons:" + captionParse.Episode.Season + ":" + captionParse.Episode.EpisodeNumber);
                         }
                         console.log(captionParse);
                         api.sendMessage({body: captionText, url: memeURL}, event.threadID);
