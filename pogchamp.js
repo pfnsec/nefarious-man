@@ -5,8 +5,10 @@
 let login = require("facebook-chat-api");
 let fs = require('fs');
 let request = require('request');
+let https = require('https');
 let net = require('net');
 let emoji = require('random-emoji');
+let frinkiac = require('frinkiac');
 
 let nicknames = new Map
 ([
@@ -79,6 +81,12 @@ function listenCallback(err, event, api)
 
     if (event.type == "message") {
         parseCommand(api, event);
+        /*
+         * Removed to prevent nuclear bot war
+        if(!parseCommand(api, event))
+            if(Math.floor(Math.random() * 20) == 0)
+                frinkOut(api, event, event.body);
+         */
     } else if (event.type == "presence") {
         console.log(event.userID + " " + event.status);
 
@@ -95,6 +103,8 @@ function parseCommand(api, event)
 {
     try {
 
+    var gotCmd = false;
+
     let cmds = event.body.split(";");
 
     console.log(cmds.length);
@@ -108,24 +118,32 @@ function parseCommand(api, event)
 
             if(str[0].trim().charAt(0) == "%") {
                 dispatchCommand(api, event, str[0].slice(1), str.slice(1));
+                gotCmd = true;
             }
     }
 
     } catch(err) {
         console.log(err.message);
     }
+    return gotCmd;
 }
 
 function dispatchCommand(api, event, command, args)
 {
     console.log(command + "(" + args + ")");
     if(command == "wrlog") {
-    } else if(command == "quote") {
-//        sendReply(event, api, quotelist[Math.floor(Math.random() * quotelist.length)]);
+    } else if(command == "quote" && args == "") {
+        sendReply(event, api, quotelist[Math.floor(Math.random() * quotelist.length)]);
     } else if(command == "lock" && testGroup(api, event, sudoers)) {
         votelock = true;
     } else if(command == "unlock" && testGroup(api, event, sudoers)) {
         votelock = false;
+    } else if(command == "restart" && testGroup(api, event, sudoers)) {
+        process.exit(0);
+    } else if(command == "frink" || command == "frinkiac" || command == "fr") {
+        frinkOut(api, event, args.join(" "), false);
+    } else if(command == "frinkqueue") {
+        frinkOut(api, event, args.join(" "), true);
     } else if(command == "spin") {
         console.log(emoji.random({count: 1})[0].name);
         api.changeThreadEmoji(emoji.random({count: 1})[0].character, event.threadID, defaultError);
@@ -133,12 +151,19 @@ function dispatchCommand(api, event, command, args)
         voteSkipHTV(api, event, event.senderID);
     } else if(command == "nextshow" || command == "ns") {
         nextShowHTV(api, event, args[0]);
+    } else if(command == "pickepisode" || command == "pe") {
+        pickEpisodeHTV(api, event, args[0]);
     } else if(command == "currentepisode" || command == "ce") {
         currentEpisodeHTV(api, event);
     } else if(command == "showlist" || command == "sl") {
         showListHTV(api, event);
-    } else if(command == "requestshow"|| command == "sl") {
+    } else if(command == "requestshow"|| command == "rs") {
         requestShowHTV(api, event, args.join(" "));
+    } else if(command == "man") {
+         sendReply(api, event, 
+            ["[requestshow|rs] showname: Request a show",
+             "[]:",
+             "[]:"]);
     } else if(command == "chatstats") {
 //       chatHistorySize(api, event);
     }
@@ -163,6 +188,8 @@ function countOnline() {
     return count;
 }
 
+//let quotelist = JSON.parse(fs.readFileSync('quotes.json', {encoding:'utf8', flag:'a+'}));
+
 function noReply(data) {
     if(data === "True") {
 //        return quotelist[Math.floor(Math.random() * quotelist.length)];
@@ -172,7 +199,9 @@ function noReply(data) {
     return data;
 }
 
-//let quotelist = JSON.parse(fs.readFileSync('quotes.json', {encoding:'utf8', flag:'a+'}));
+function passReply(data) {
+    return data;
+}
 
 function okReply(data) {
     if(data === "True") {
@@ -214,8 +243,15 @@ function nextShowHTV(api, event, tvShow) {
     sendHTVCommand(api, event, {"command":"nextShow", "tvShow":tvShow}, okReply);
 }
 
+function pickEpisodeHTV(api, event, episode) {
+    sendHTVCommand(api, event, {"command":"pickEpisode", "tvShow":episode}, okReply);
+}
+
 function showListHTV(api, event) {
     var showList = [];
+    sendHTVCommand(api, event, {"command":"idList"}, passReply);
+
+    /* For reference - parsing fields from a json response
     sendHTVCommand(api, event, {"command":"idList"}, function(data) {
         JSON.parse(data.toString('utf8'), (key, value) => {
             if(key != "name" && key != "path")
@@ -224,6 +260,7 @@ function showListHTV(api, event) {
 
         return showList.join(", ");
     });
+    */
 }
 
 function testGroup(api, event, group) {
@@ -277,6 +314,60 @@ function sendHTVCommand(api, event, command, parseReply) {
     });
 
      
+}
+
+function frinkOut(api, event, message, playEpisode){
+    frinkiac.search(message)
+    .then(function(res) {
+        if (res.status !== 200) {
+            throw res;
+        } else {
+            return res.data;
+        }
+    })
+    .catch(function(err) {
+        throw err;
+    })
+    .then(function(data) {
+            let frinkURLRegexp = /https\:\/\/frinkiac\.com\/meme\/(.+)\/(.+)\?/i;
+            var memes = data.map(frinkiac.memeMap, frinkiac);
+            var memeURL = "";
+        //    var memeURL = memes[Math.floor(Math.random() * memes.length)];
+            console.log("Retrieved " + memes.length + "memes.");
+            var n = 0;
+            while(memeURL == "") {
+                if(Math.random() < 0.60) {
+                    memeURL = memes[n];
+                    console.log("Selected meme " + n + ".");
+                }
+                if(n >= memes.length)
+                    n = 0;
+                n++;
+            }
+            var caption = frinkiac.captionURL(frinkURLRegexp.exec(memeURL)[1], frinkURLRegexp.exec(memeURL)[2]);
+            var captionData = "";
+            var captionParse = [];
+            var captionText = "";
+            var episode = "";
+            
+            https.get(caption, (res) => {
+                    
+                    res.setEncoding('utf-8');
+                    res.on('data', (d) => {
+                            captionData += d;
+                    });
+                    
+                    res.on('end', function() {
+                        captionParse = JSON.parse(captionData);
+                        captionText = captionParse.Subtitles.map(function(s){return s.Content;}).join("\n");
+                        if(playEpisode) {
+                            nextShowHTV(api, event, "simpsons:" + captionParse.Episode.Season.lstrip('0') + ":" + captionParse.Episode.EpisodeNumber.lstrip(0));
+                        }
+                        console.log(captionParse);
+                        api.sendMessage({body: captionText, url: memeURL}, event.threadID);
+                    });
+            });
+    });
 }
 
 function quoteMessage(api, event, message) 
