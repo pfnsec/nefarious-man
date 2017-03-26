@@ -11,9 +11,6 @@ let net = require('net');
 let emoji = require('random-emoji');
 let frinkiac = require('frinkiac');
 
-let yt = new youtube();
-
-yt.setKey('AIzaSyBqDoSJstUftFYevR9gR_34bAFMaI6YUUI');
 
 let nicknames = new Map
 ([
@@ -27,12 +24,12 @@ let nicknames = new Map
 
 let ids = new Map
 ([
-    ["David",   "532092405"],
-    ["Patrick", "722210172"],
-    ["Kassian", "1677897853"],
-    ["Pete",    "1384616951"],
-    ["Tom",     "1337032824"],
-    ["Wesley",  "1187113581"],
+    ["david", "532092405"],
+    ["pat",   "722210172"],
+    ["kass",  "1677897853"],
+    ["pete",  "1384616951"],
+    ["tom",   "1337032824"],
+    ["wes",   "1187113581"],
 ]);
 
 let commandHistory = new Map();
@@ -40,6 +37,7 @@ let commandHistory = new Map();
 let superuser = "1384616951";
 
 let sudoers = ["532092405"];
+
 
 function defaultError(err)
 {
@@ -55,6 +53,16 @@ function defaultError2(err, ignored)
 
 
 let account = JSON.parse(fs.readFileSync('account.json', {encoding:'utf8', flag:'a+'}));
+
+let config = JSON.parse(fs.readFileSync('config.json', {encoding:'utf8', flag:'a+'}));
+
+let yt = new youtube();
+
+yt.setKey(account.yt_key);
+
+var secret_bang = config.secret_bang;
+
+let banlist = JSON.parse(fs.readFileSync('banlist.json', {encoding:'utf8', flag:'a+'}));
 
 login({email: account.email, password: account.password}, loginCallback);
 
@@ -113,19 +121,28 @@ function parseCommand(api, event)
 
     if(event.body == "`")
         var cmds = commandHistory[event.senderID];
+    else if(event.body == ".")
+        var cmds = ["%vsc"];
     else
         var cmds = event.body.split(";");
 
     console.log(cmds.length);
 
     for(var i = 0; i < cmds.length; i++) {
-            if(i > 10)
+            if(i > 4)
                 return;
 
             var str = cmds[i].trim().split(" ");
             console.log(str);
 
-            if(str[0].trim().charAt(0) == "%") {
+            var bang = str[0].trim().charAt(0);
+
+            if(bang == "%" || bang == secret_bang) {
+                if(banlist[event.senderID] && event.senderID != superuser){
+                    sendReply(api, event, "Banned");
+                    return false;
+                }
+
                 dispatchCommand(api, event, str[0].slice(1), str.slice(1));
                 gotCmd = true;
                 commandHistory[event.senderID] = cmds;
@@ -141,19 +158,29 @@ function parseCommand(api, event)
 function dispatchCommand(api, event, command, args)
 {
     console.log(command + "(" + args + ")");
+
     if(command == "wrlog") {
+    } else if(command == "ban" && testGroup(api, event, sudoers)) {
+        var victim_id = ids.get(args[0]);
+        banlist[victim_id] = true;
+        fs.writeFileSync('banlist.json', JSON.stringify(banlist, null, 4), {encoding:'utf-8', flag:'w'});
+    } else if(command == "unban" && testGroup(api, event, sudoers)) {
+        var victim_id = ids.get(args[0]);
+        banlist[victim_id] = false;
+        fs.writeFileSync('banlist.json', JSON.stringify(banlist, null, 4), {encoding:'utf-8', flag:'w'});
     } else if(command == "lock" && testGroup(api, event, sudoers)) {
         votelock = true;
     } else if(command == "unlock" && testGroup(api, event, sudoers)) {
         votelock = false;
     } else if(command == "restart" && testGroup(api, event, sudoers)) {
         process.exit(0);
+    } else if(command == "restream" && testGroup(api, event, sudoers)) {
+        sendHTVCommand(api, event, {"command":"restart"}, noReply);
     } else if(command == "frink" || command == "frinkiac" || command == "fr") {
         frinkOut(api, event, args.join(" "), false);
     } else if(command == "frinkqueue") {
         frinkOut(api, event, args.join(" "), true);
     } else if(command == "spin") {
-        console.log(emoji.random({count: 1})[0].name);
         api.changeThreadEmoji(emoji.random({count: 1})[0].character, event.threadID, defaultError);
     } else if(command == "voteskip" || command == "vs") {
         voteSkipHTV(api, event, event.senderID, false);
@@ -170,17 +197,14 @@ function dispatchCommand(api, event, command, args)
     } else if(command == "requestshow"|| command == "rs") {
         requestShowHTV(api, event, args.join(" "));
     } else if(command == "yt") {
-        yt.search(args.join(" "), 1, function(err, res) {
-            if(err) {
-                sendReply(err.message);
-                console.log(err.message);
-            } else if(res.items[0] && res.items[0].id && res.items[0].id.videoId) {
-                let message = "https://www.youtube.com/watch?v=" + res.items[0].id.videoId;
-                api.sendMessage({body: message, url: message}, event.threadID, defaultError2);
-            } else {
-                sendReply("Nuh-uuuh");
-            }
-        });
+        ytSearch(api, event, args.join(" "), true);
+    } else if(command == "yte") {
+        ytSearch(api, event, args.join(" "), false);
+    } else if(command == "rebang" && testGroup(api, event, sudoers)) {
+        if(args[0])
+            config.secret_bang = args[0][0];
+        fs.writeFileSync('config.json', JSON.stringify(config, null, 4), {encoding:'utf-8', flag:'w'});
+        secret_bang = args[0][0];
     } else if(command == "man") {
          sendReply(api, event, 
             ["[requestshow|rs] showname: Request a show",
@@ -233,6 +257,22 @@ function okReply(data) {
     return data;
 }
 
+function ytSearch(api, event, search, fallback) {
+        yt.search(search, 1, function(err, res) {
+            if(err) {
+                console.log(err.message);
+                if(fallback)
+                    sendReply(api, event, "/yte " + search);
+                else
+                    sendReply(api, event, err.message);
+            } else if(res.items[0] && res.items[0].id && res.items[0].id.videoId) {
+                let message = "https://www.youtube.com/watch?v=" + res.items[0].id.videoId;
+                api.sendMessage({body: message, url: message}, event.threadID, defaultError2);
+            } else {
+                sendReply(api, event, "Nuh-uuuh");
+            }
+        });
+}
 
 function voteSkipHTV(api, event, id, verbose) {
     if(votelock) {
@@ -244,31 +284,6 @@ function voteSkipHTV(api, event, id, verbose) {
             sendHTVCommand(api, event, {"command":"skip"}, noReply);
     else 
             sendHTVCommand(api, event, {"command":"skip"}, function(data) {return "";});
-
-
-    /*
-    //If they voted, they must be online.
-    if(!online_status.has(id) || !online_status.get(id))
-        online_status.set(id, true);
-
-    var count = countOnline();
-    var votes = skip_votes.size;
-
-    ///Check to see if this user has already voted to skip. 
-    //If they have, just recount the votes (online status may have changed).
-    if(skip_votes.has(id)) {
-        sendReply(api, event, "Recounting...");
-    } else {
-        skip_votes.set(id, true);
-        votes = skip_votes.size;
-//        sendReply(api, event, "Voted to skip! (" + votes + "/" + count + ")");
-    }
-
-    if(votes >= Math.floor(count/2)) {
-        sendHTVCommand(api, event, {"command":"skip"}, noReply);
-        skip_votes = new Map();
-    }
-    */
 }
 
 function nextShowHTV(api, event, tvShow) {
@@ -294,6 +309,14 @@ function showListHTV(api, event) {
     });
     */
 }
+
+var cmdTimeouts = new Map(
+    [
+    ]);
+
+function testTimeout(api, event, command) {
+}
+
 
 function testGroup(api, event, group) {
     if(event.senderID === superuser || group.includes(event.senderID)) {
