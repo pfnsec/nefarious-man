@@ -10,6 +10,7 @@ let https = require('https');
 let net = require('net');
 let emoji = require('random-emoji');
 let frinkiac = require('frinkiac');
+let pg = require('pg');
 
 
 let nicknames = new Map
@@ -20,6 +21,7 @@ let nicknames = new Map
     ["1384616951",  "Pete"],
     ["1337032824",  "Tom"],
     ["1187113581",  "Wesley"],
+    ["100011414462173",  "H. Man"],
 ]);
 
 let ids = new Map
@@ -30,13 +32,50 @@ let ids = new Map
     ["pete",  "1384616951"],
     ["tom",   "1337032824"],
     ["wes",   "1187113581"],
+    ["hm",    "100011414462173"],
 ]);
-
-let commandHistory = new Map();
 
 let superuser = "1384616951";
 
 let sudoers = ["532092405"];
+
+
+
+//Configuration 
+
+
+
+let commandHistory = new Map();
+
+let account = JSON.parse(fs.readFileSync('account.json', {encoding:'utf8', flag:'a+'}));
+
+let config = JSON.parse(fs.readFileSync('config.json', {encoding:'utf8', flag:'a+'}));
+
+let yt = new youtube();
+
+yt.setKey(account.yt_key);
+yt.addParam('type', 'video');
+
+var secret_bang = config.secret_bang;
+
+let banlist = JSON.parse(fs.readFileSync('banlist.json', {encoding:'utf8', flag:'a+'}));
+
+login({email: account.email, password: account.password}, loginCallback);
+
+var htv_sock = net.Socket();
+var skip_votes = new Map();
+var votelock = false;
+var online_status = new Map();
+
+var dbConfig = JSON.parse(fs.readFileSync('pg-config.json'), {encoding:'utf8', flag:'r+'});
+var dbPool = new pg.Pool(dbConfig);
+
+dbPool.on('error', function(err, client) {
+    console.error('error: ', err);
+});
+
+
+// Helper Functions
 
 
 function defaultError(err)
@@ -52,24 +91,7 @@ function defaultError2(err, ignored)
 }
 
 
-let account = JSON.parse(fs.readFileSync('account.json', {encoding:'utf8', flag:'a+'}));
-
-let config = JSON.parse(fs.readFileSync('config.json', {encoding:'utf8', flag:'a+'}));
-
-let yt = new youtube();
-
-yt.setKey(account.yt_key);
-
-var secret_bang = config.secret_bang;
-
-let banlist = JSON.parse(fs.readFileSync('banlist.json', {encoding:'utf8', flag:'a+'}));
-
-login({email: account.email, password: account.password}, loginCallback);
-
-var htv_sock = net.Socket();
-var skip_votes = new Map();
-var votelock = false;
-var online_status = new Map();
+//Callbacks
 
 
 function loginCallback(err, api)
@@ -94,7 +116,11 @@ function listenCallback(err, event, api)
     console.log(event.type);
 
     if (event.type == "message") {
-        parseCommand(api, event);
+        if(!parseCommand(api, event))  {
+          //  if(event.userID == ids["pat"]) {
+                logChatQuote(event);
+          //  }
+        }
         /*
          * Removed to prevent nuclear bot war
         if(!parseCommand(api, event))
@@ -112,6 +138,8 @@ function listenCallback(err, event, api)
     } else {
     }
 }
+
+
 
 function parseCommand(api, event)
 {
@@ -176,10 +204,14 @@ function dispatchCommand(api, event, command, args)
         process.exit(0);
     } else if(command == "restream" && testGroup(api, event, sudoers)) {
         sendHTVCommand(api, event, {"command":"restart"}, noReply);
+    } else if(command == "toggleshuffle" && testGroup(api, event, sudoers)) {
+        sendHTVCommand(api, event, {"command":"toggleShuffle", "tvShow":args[0]}, noReply);
     } else if(command == "frink" || command == "frinkiac" || command == "fr") {
         frinkOut(api, event, args.join(" "), false);
     } else if(command == "frinkqueue") {
         frinkOut(api, event, args.join(" "), true);
+    } else if(command == "morbo" || command == "morbotron" || command == "mo") {
+        morbOut(api, event, args.join(" "), false);
     } else if(command == "spin") {
         api.changeThreadEmoji(emoji.random({count: 1})[0].character, event.threadID, defaultError);
     } else if(command == "voteskip" || command == "vs") {
@@ -210,6 +242,8 @@ function dispatchCommand(api, event, command, args)
             ["[requestshow|rs] showname: Request a show",
              "[]:",
              "[]:"]);
+    } else if(command == "grep" ) {
+        doChatQuote(api, event, args.join(" "));
     } else if(command == "chatstats") {
 //       chatHistorySize(api, event);
     }
@@ -259,6 +293,8 @@ function okReply(data) {
 
 function ytSearch(api, event, search, fallback) {
         yt.search(search, 1, function(err, res) {
+            console.log(res);
+            console.log(res.items.id);
             if(err) {
                 console.log(err.message);
                 if(fallback)
@@ -372,6 +408,11 @@ function sendHTVCommand(api, event, command, parseReply) {
 }
 
 function frinkOut(api, event, message, playEpisode){
+    var SEARCH_URL = 'https://frinkiac.com/api/search?%s';
+    var MEME_URL = 'https://frinkiac.com/meme/%s/%s?%s';
+    var CAPTION_URL = 'https://frinkiac.com/api/caption?%s';
+    frinkiac.setURL("frinkiac");
+
     frinkiac.search(message)
     .then(function(res) {
         if (res.status !== 200) {
@@ -430,6 +471,83 @@ function frinkOut(api, event, message, playEpisode){
     });
 }
 
+
+
+
+function morbOut(api, event, message, playEpisode){
+
+    var SEARCH_URL = 'https://morbotron.com/api/search?%s';
+    var MEME_URL = 'https://morbotron.com/meme/%s/%s?%s';
+    var CAPTION_URL = 'https://morbotron.com/api/caption?%s';
+
+    frinkiac.setURL("morbotron");
+
+    frinkiac.search(message)
+    .then(function(res) {
+        if (res.status !== 200) {
+            throw res;
+        } else {
+            return res.data;
+        }
+    })
+    .catch(function(err) {
+        throw err;
+    })
+    .then(function(data) {
+            let frinkURLRegexp = /https\:\/\/morbotron\.com\/meme\/(.+)\/(.+)\?/i;
+            var memes = data.map(frinkiac.memeMap, frinkiac);
+            var memeURL = "";
+        //    var memeURL = memes[Math.floor(Math.random() * memes.length)];
+            console.log("Retrieved " + memes.length + "memes.");
+
+            if(memes.length == 0) {
+                sendReply(api, event, "Bite my shiny metal ass");
+            }
+
+            var n = 0;
+            while(memeURL == "") {
+                if(Math.random() < 0.60) {
+                    memeURL = memes[n];
+                    console.log("Selected meme " + n + ".");
+                    console.log(memeURL);
+                }
+                if(n >= memes.length)
+                    n = 0;
+                n++;
+            }
+            var caption = frinkiac.captionURL(frinkURLRegexp.exec(memeURL)[1], frinkURLRegexp.exec(memeURL)[2]);
+            var captionData = "";
+            var captionParse = [];
+            var captionText = "";
+            var episode = "";
+
+            console.log(caption);
+            
+            https.get(caption, (res) => {
+                    
+                    res.setEncoding('utf-8');
+                    res.on('data', (d) => {
+                            captionData += d;
+                    });
+                    
+                    res.on('end', function() {
+                        captionParse = JSON.parse(captionData);
+                        captionText = captionParse.Subtitles.map(function(s){return s.Content;}).join("\n");
+                        console.log(captionParse);
+
+                        if(playEpisode) {
+                            nextShowHTV(api, event, "simpsons:" + captionParse.Episode.Season + ":" + captionParse.Episode.EpisodeNumber);
+                        }
+
+                        console.log(captionParse);
+                        api.sendMessage({body: captionText, url: memeURL}, event.threadID);
+                    });
+            });
+    });
+}
+
+
+
 function quoteMessage(api, event, message) 
 {
 
@@ -453,3 +571,60 @@ function chatHistorySize(api, event)
     });
 }
 
+
+function logChatQuote(event) {
+
+    console.log(event);
+
+    dbPool.connect(function(err, client, done) {
+
+        if(err) {
+            console.error('error fetching client from pool', err);
+        }
+
+        client.query("INSERT INTO messages VALUES ('" + 
+            event.senderID  + "', '" +
+            event.threadID  + "', '" +
+            event.timestamp + "', '" +
+            event.body      + "');",
+            function(err, result) {
+                done(err);
+
+                if(err) {
+                    console.error('error inserting into db', err);
+                }
+
+                console.log(result);
+        });
+    });
+
+
+}
+
+function doChatQuote(api, event, query) {
+    dbPool.connect(function(err, client, done) {
+        var response = "D'oh!";
+
+        if(err) {
+            console.error('error fetching client from pool', err);
+            sendReply(api, event, "No database! " + err);
+        }
+
+        var resultCallback = function(err, result) {
+            done(err);
+
+
+            if(err || !result) {
+                console.error('error searching db', err);
+                sendReply(api, event, "D'oh!" + err);
+                return;
+            }
+
+            console.log(result);
+            sendReply(api, event, "<" + nicknames.get(result.rows[0].sender_id) + "> " + result.rows[0].body); 
+        }
+
+        client.query("SELECT * FROM messages WHERE thread_id = '" + event.threadID + "' AND body LIKE '%" + query + "%' ORDER BY random() LIMIT 1", resultCallback);
+
+    });
+}
