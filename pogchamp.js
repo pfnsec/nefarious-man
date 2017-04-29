@@ -582,11 +582,11 @@ function logChatQuote(event) {
             console.error('error fetching client from pool', err);
         }
 
-        client.query("INSERT INTO messages VALUES ('" + 
-            event.senderID  + "', '" +
-            event.threadID  + "', '" +
-            event.timestamp + "', '" +
-            event.body      + "');",
+        client.query("INSERT INTO messages VALUES ( $1, $2, $3, $4);", 
+            [event.senderID,
+             event.threadID,  
+             event.timestamp,
+             event.body], 
             function(err, result) {
                 done(err);
 
@@ -614,9 +614,12 @@ function doChatQuote(api, event, query) {
             done(err);
 
 
-            if(err || !result) {
+            if(err ) {
                 console.error('error searching db', err);
                 sendReply(api, event, "D'oh!" + err);
+                return;
+            } else if(typeof(result) == 'undefined' || result.rowCount != 1) {
+                sendReply(api, event, "D'oh!");
                 return;
             }
 
@@ -624,7 +627,10 @@ function doChatQuote(api, event, query) {
             sendReply(api, event, "<" + nicknames.get(result.rows[0].sender_id) + "> " + result.rows[0].body); 
         }
 
-        client.query("SELECT * FROM messages WHERE thread_id = '" + event.threadID + "' AND body LIKE '%" + query + "%' ORDER BY random() LIMIT 1", resultCallback);
+        client.query("SELECT * FROM messages WHERE thread_id = $1 AND body LIKE $2 ORDER BY random() LIMIT 1",
+            [event.threadID,
+             "%" + query + "%"],
+            resultCallback);
 
     });
 }
