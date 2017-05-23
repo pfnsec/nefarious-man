@@ -35,6 +35,7 @@ let ids = new Map
     ["hm",    "100011414462173"],
 ]);
 
+let bot_id    = "100013328205530";
 let superuser = "1384616951";
 
 let sudoers = ["532092405"];
@@ -73,6 +74,8 @@ var dbPool = new pg.Pool(dbConfig);
 dbPool.on('error', function(err, client) {
     console.error('error: ', err);
 });
+
+var chatMineRunning = false;
 
 
 // Helper Functions
@@ -242,6 +245,10 @@ function dispatchCommand(api, event, command, args)
             ["[requestshow|rs] showname: Request a show",
              "[]:",
              "[]:"]);
+    } else if(command == "mine" ) {
+//        while(!mineChatHistory(api, event));
+        mineChatHistory(api, event);
+        //sendReply(api, event, "Done!");
     } else if(command == "grep" ) {
         doChatQuote(api, event, args.join(" "));
     } else if(command == "chatstats") {
@@ -574,7 +581,10 @@ function chatHistorySize(api, event)
 
 function logChatQuote(event) {
 
-    console.log(event);
+    if(event.body[0] == '%' || event.senderID == bot_id)
+        return;
+
+    console.log("Log " + event.body);
 
     dbPool.connect(function(err, client, done) {
 
@@ -633,4 +643,69 @@ function doChatQuote(api, event, query) {
             resultCallback);
 
     });
+}
+
+
+function mineChatHistory(api, event) {
+
+    var reachedEnd = false;
+
+    //while(reachedEnd == false) {
+        dbPool.connect(function(err, client, done) {
+            var response = "D'oh!";
+
+            if(err) {
+                console.error('error fetching client from pool', err);
+            }
+
+            var resultCallback = function(err, result) {
+                done(err);
+
+                if(err) {
+                    console.error('error searching db', err);
+                    return;
+                }
+
+                console.log(result);
+                
+                var historyCallback = function(err, history) {
+                    console.log("getHistory");
+
+                    if(err) {
+                        console.error(err);
+                        return;
+                    }
+
+                    console.log(history.length);
+
+                    history.pop();
+
+                    if(history.length < 50)
+                        reachedEnd = true;
+                    console.log(history[0]);
+
+                    for(var i = history.length - 1; i >= 0; i--) {
+                        logChatQuote(history[i]);
+                    }
+
+
+                }
+
+                if(result.rowCount != 1) {
+                    api.getThreadHistory(event.threadID, 50, undefined, historyCallback);
+                } else {
+                    api.getThreadHistory(event.threadID, 50, result.rows[0].timestamp, historyCallback);
+                }
+
+            }
+
+            client.query("SELECT * FROM messages WHERE thread_id = $1 ORDER BY timestamp ASC LIMIT 1",
+                [event.threadID],
+                resultCallback);
+
+        });
+ //   }
+
+    sendReply(api, event, "Done!");
+
 }
